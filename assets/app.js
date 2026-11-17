@@ -245,7 +245,8 @@ function card(d) {
   <article class="qcard">
     <div class="qhead">
       <h3>${esc(d.name)}</h3>
-      <div class="sub">${esc(d.type)}, ${q.pieces === 2 ? 'a pair' : 'one piece'} · ${esc(d.collection)} · ${esc(d.code)} · maker's code ${esc(q.maker_code)}</div>
+      <div class="sub">${[`${d.type}, ${q.pieces === 2 ? 'a pair' : 'one piece'}`, d.collection, d.code, `maker's code ${q.maker_code}`]
+        .map(s => `<span>${esc(s)}</span>`).join(' · ')}</div>
     </div>
     <div class="qgrid">
       <div class="pics">
