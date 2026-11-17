@@ -10,5 +10,14 @@ A small static website for Akurati Fine Jewellery, served by GitHub Pages.
 No build step: `index.html`, `assets/`, `img/` and `data/` are the site. To look at it locally:
 `python3 -m http.server` in this folder, then open http://localhost:8000 (opening the file directly can't load the data).
 
-The cost data and the scripts that update this site live in a separate private repo; nothing in this repo holds
-cost prices in plain text.
+## Adding a quote
+
+```
+python3 tools/publish.py --open     # asks for the password, unlocks the data into tools/costs.json
+# edit tools/costs.json (a design's status, its quote lines), then:
+python3 tools/publish.py            # locks it again into data/costs.enc.json
+git add -A && git commit -m "Quote for <design>" && git push
+```
+
+`tools/costs.json` and `tools/password.txt` are git-ignored: nothing in this repo holds cost prices in plain text,
+and the password is the only key. Keep it somewhere safe; without it the cost data can't be opened.

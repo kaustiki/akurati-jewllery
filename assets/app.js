@@ -1,5 +1,5 @@
 // Akurati costing site.
-// Tab 1 shows nothing until the password decrypts data/costs.enc.json (made by vajra/costing/publish.py:
+// Tab 1 shows nothing until the password decrypts data/costs.enc.json (made by tools/publish.py:
 // PBKDF2-SHA256 -> AES-256-GCM). Tab 2 is static HTML in index.html.
 'use strict';
 
@@ -212,7 +212,7 @@ function shell() {
   <p class="small">${esc(S.data.rate_list.note)}</p>
 
   <div class="foot-note">
-    <span>Data updated ${esc(S.data.updated)}. To add a quote: edit <code>vajra/costing/costs.json</code>, run <code>python3 costing/publish.py</code>.</span>
+    <span>Data updated ${esc(S.data.updated)}. To add a quote: run <code>python3 tools/publish.py --open</code>, edit <code>tools/costs.json</code>, run <code>python3 tools/publish.py</code>.</span>
     <button type="button" class="ghost" id="relock">Lock this device</button>
   </div>
   <dialog class="zoom" id="zoom"><img alt=""></dialog>`;

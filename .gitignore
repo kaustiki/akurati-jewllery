@@ -1,0 +1,6 @@
+# The plain cost data and the password never go to GitHub (this repo is public).
+# Both can be recovered: costs.json from data/costs.enc.json with the password (tools/publish.py --open).
+tools/costs.json
+tools/password.txt
+tools/cad/
+__pycache__/
