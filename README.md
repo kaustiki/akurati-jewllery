@@ -14,7 +14,7 @@ No build step: `index.html`, `assets/`, `img/` and `data/` are the site. To look
 
 ```
 python3 tools/publish.py --open     # asks for the password, unlocks the data into tools/costs.json
-# edit tools/costs.json (a design's status, its quote lines), then:
+# edit tools/costs.json: give the design a "quote" (copy Veena's), then:
 python3 tools/publish.py            # locks it again into data/costs.enc.json
 git add -A && git commit -m "Quote for <design>" && git push
 ```
