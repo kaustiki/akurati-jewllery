@@ -168,14 +168,11 @@ function initCad() {
   });
 }
 
-// ---------------------------------------------------------------- gold booking per design
-// When the gold is booked with the maker, its day, rate and weight are typed on the gold line (Change + confirm + Save) and
-// kept on this device (localStorage akurati-bought {code: {date, rate14, rate24?, g?, ct?}}). The 24K rate is only
-// there to fill the 14K rate at the maker's purity; the 14K rate on the bill is what the cost uses.
-const RATE_SITE = 'https://www.goodreturns.in/gold-rates/';
-const rateLink = `<a class="small" href="${RATE_SITE}" target="_blank" rel="noopener">Check today's rate</a>`;
-const purity = () => S.data.gold.maker_purity;
-const to14 = r24 => Math.round(r24 / 0.999 * purity());
+// ---------------------------------------------------------------- 14K rate paid per design
+// When the gold is bought, the 14K rate per gram actually paid is typed on the gold line (Change + confirm + Save),
+// like the CAD charge, and kept on this device (localStorage akurati-bought {code: {date, rate14, g?, ct?}}).
+// The cost and profit use it; the selling price still follows today's rate.
+const rateLink = `<a class="small" href="https://www.goodreturns.in/gold-rates/" target="_blank" rel="noopener">Check today's rate</a>`;
 
 function loadBought() {
   try { S.bought = JSON.parse(store.get('akurati-bought') || '{}') || {}; } catch { S.bought = {}; }
@@ -186,29 +183,16 @@ function saveBought() {
   else store.del('akurati-bought');
 }
 
-function buyForm(d) {
-  const q = d.quote, b = boughtOf(d) || {}, own = S.bought[d.code] !== undefined;
-  const r24 = b.rate14 ? b.rate24 ?? '' : S.rate24, r14 = b.rate14 ?? to14(S.rate24);
-  return `
-    <form class="set-form buy-form" data-code="${esc(d.code)}" autocomplete="off">
-      <label>Day the gold was booked<input class="buy-date" type="date" max="${todayISO()}" value="${esc(b.date || todayISO())}"></label>
-      <label>24K rate that day, ₹ per gram<input class="buy-24" type="text" inputmode="decimal" value="${r24}">${rateLink}</label>
-      <label>14K rate on the bill, ₹ per gram<input class="buy-14" type="text" inputmode="decimal" value="${r14}"></label>
-      <label>Gold weight, grams<input class="buy-g" type="text" inputmode="decimal" value="${b.g ?? q.gold.g}"></label>
-      <p class="small note">Typing the 24K rate fills the 14K rate at the maker's ${rateTxt(purity())}. If the maker's bill
-        shows a different 14K rate, type that. The quote says ${q.gold.g} g; change the weight when the final bill comes.
-        Only this device keeps this booking.</p>
-      <div class="set-btns">
-        <button type="submit">Save</button>
-        <button type="button" class="ghost buy-cancel">Cancel</button>
-        ${own ? `<button type="button" class="ghost buy-clear">${q.bought ? 'Back to the locked bill' : 'Not booked yet'}</button>` : ''}
-      </div>
+function goldHow(d, how) {
+  if (S.buyEdit === d.code) return `
+    <form class="buy-form" data-code="${esc(d.code)}" autocomplete="off">
+      <input type="text" inputmode="decimal" value="${boughtOf(d)?.rate14 ?? Math.round(rate14())}"
+        aria-label="14K gold rate paid for ${esc(d.name)}, ₹ per gram"> <span>₹ per gram of 14K</span>
+      <button type="submit">Save</button>
+      <button type="button" class="ghost buy-cancel">Cancel</button>
+      ${S.bought[d.code] ? `<button type="button" class="ghost buy-clear">${d.quote.bought ? 'Back to the locked bill' : "Back to today's rate"}</button>` : ''}
       <p class="lock-msg buy-msg" role="alert"></p>
     </form>`;
-}
-
-function goldHow(d, how) {
-  if (S.buyEdit === d.code) return buyForm(d);
   return `<div class="how">${esc(how)} · <button type="button" class="link buy-edit" data-code="${esc(d.code)}">Change</button>
     · ${rateLink}</div>`;
 }
@@ -218,52 +202,33 @@ function initBought() {
     const t = e.target;
     if (t.matches('.buy-edit')) {
       const d = design(t.dataset.code);
-      const ask = boughtOf(d) ? `Change the gold booking for ${d.name}?` : `Record the gold booking for ${d.name}?`;
-      if (!confirm(`${ask}\nIts cost price and profit change with it. Only this device keeps it.`)) return;
+      if (!confirm(`Change the 14K gold rate for ${d.name}?\nType the rate per gram you paid. The cost and profit use it; `
+        + "the selling price still follows today's rate. Only this device changes.")) return;
       S.buyEdit = d.code;
       render();
-      $('.buy-form .buy-24').focus();
+      $('.buy-form input').focus();
     } else if (t.matches('.buy-cancel')) {
       S.buyEdit = null;
       render();
     } else if (t.matches('.buy-clear')) {
-      const d = design(t.closest('.buy-form').dataset.code);
-      if (!confirm(d.quote.bought ? `Take ${d.name} back to the bill in the locked data?`
-        : `Mark the gold for ${d.name} as not booked?\nIts cost goes back to today's rate.`)) return;
-      delete S.bought[d.code];
+      delete S.bought[t.closest('.buy-form').dataset.code];
       saveBought();
       S.buyEdit = null;
       render();
     }
   });
-  $('#app').addEventListener('input', e => {   // 24K fills 14K; typing 14K leaves 24K alone
-    if (!e.target.matches('.buy-24')) return;
-    const v = Number(e.target.value.replace(/[₹,\s]/g, ''));
-    if (v >= 3000 && v <= 50000) e.target.closest('.buy-form').querySelector('.buy-14').value = to14(v);
-  });
   $('#app').addEventListener('submit', e => {
     if (!e.target.matches('.buy-form')) return;
     e.preventDefault();
-    const f = e.target, d = design(f.dataset.code), q = d.quote, msg = f.querySelector('.buy-msg');
-    const num = sel => { const s = f.querySelector(sel).value.replace(/[₹,\s]/g, ''); return s === '' ? NaN : Number(s); };
-    const date = f.querySelector('.buy-date').value, r24 = num('.buy-24'), r14 = num('.buy-14'), g = num('.buy-g');
-    if (!date) { msg.textContent = 'Pick the day the gold was booked.'; return; }
-    if (date > todayISO()) { msg.textContent = 'That day has not come yet. Pick the day the gold was booked.'; return; }
-    if (!Number.isNaN(r24) && !(r24 >= 3000 && r24 <= 50000)) {
-      msg.textContent = r24 > 50000 ? 'That 24K rate looks like the price for 10 grams. Type the price for 1 gram.'
-        : 'That is too low for 24K gold per gram. Check the number, or leave it empty.';
+    const f = e.target, d = design(f.dataset.code), raw = f.querySelector('input').value.replace(/[₹,\s]/g, '');
+    const v = raw === '' ? NaN : Number(raw);
+    if (!(v >= 1500 && v <= 35000)) {
+      f.querySelector('.buy-msg').textContent = v > 35000 ? 'That looks like the price for 10 grams. Type the price for 1 gram of 14K.'
+        : 'Type the 14K rate in rupees per gram.';
       return;
     }
-    if (!(r14 >= 1500 && r14 <= 35000)) {
-      msg.textContent = r14 > 35000 ? 'That 14K rate looks like the price for 10 grams. Type the price for 1 gram.'
-        : 'Type the 14K rate per gram from the bill.';
-      return;
-    }
-    if (!(g > 0 && g <= 100)) { msg.textContent = 'Type the gold weight in grams.'; return; }
-    const rec = { ...(q.bought || {}), date, rate14: r14 };   // carats from a locked bill stay
-    if (Number.isNaN(r24)) delete rec.rate24; else rec.rate24 = r24;
-    if (g === q.gold.g) delete rec.g; else rec.g = g;
-    S.bought[d.code] = rec;
+    const { rate24, ...b } = boughtOf(d) || {};   // weights from a locked bill stay; the old 24K field is gone
+    S.bought[d.code] = { ...b, date: b.date || todayISO(), rate14: v };
     saveBought();
     S.buyEdit = null;
     render();
@@ -454,8 +419,7 @@ function card(d) {
   return `
   <article class="qcard">
     <div class="qhead">
-      <h3>${esc(d.name)} <span class="badge${b ? ' booked' : ''}">${b ? `Gold booked ${esc(dayTxt(b.date))}` : 'Gold not booked yet'}</span>
-        ${S.buyEdit === d.code ? '' : `<button type="button" class="link buy-edit" data-code="${esc(d.code)}">${b ? 'Change' : 'Book gold'}</button>`}</h3>
+      <h3>${esc(d.name)} <span class="badge${b ? ' booked' : ''}">${b ? `Gold booked ${esc(dayTxt(b.date))}` : 'Gold not booked yet'}</span></h3>
       <div class="sub">${[`${d.type}, ${q.pieces === 2 ? 'a pair' : 'one piece'}`, d.collection, d.code, `maker's code ${q.maker_code}`]
         .map(s => `<span>${esc(s)}</span>`).join(' · ')}</div>
     </div>

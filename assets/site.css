@@ -74,9 +74,6 @@ button.link{background:none;border:0;padding:0;color:var(--crimson);text-decorat
 .qhead h3{margin:0;font-size:28px}
 .qhead h3 .badge{font-family:Mukta,system-ui,sans-serif;vertical-align:middle;margin-left:6px}
 .badge.booked{background:#E3EEDB;color:#3D5A2A}
-.qhead h3 .buy-edit{font-family:Mukta,system-ui,sans-serif;font-size:14.5px;vertical-align:middle;margin-left:6px}
-.buy-form{margin:6px 0 4px;padding:12px;font-size:14.5px;align-items:start}
-.buy-form label .small{display:inline-block;margin-top:4px;font-weight:400}
 .qhead .sub{color:var(--muted);font-size:14.5px}
 .qhead .sub span{white-space:nowrap}   /* a code like ER-081 never splits at its hyphen */
 .qgrid{display:grid;grid-template-columns:300px 1fr;gap:22px;align-items:start}
@@ -92,10 +89,10 @@ table.ct .what{font-weight:600}
 table.ct .how{font-size:13.5px;color:var(--muted)}
 table.ct tr.sum td{border-top:2px solid var(--ink);border-bottom:0;font-size:17px;font-weight:700}
 table.ct .how .badge{font-size:11.5px;padding:1px 7px}
-.cad-form{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:4px}
-.cad-form input{width:110px;padding:5px 8px}
-.cad-form button{padding:5px 12px;font-size:14px}
-.cad-form .lock-msg{flex-basis:100%;margin:0;font-size:13.5px}
+.cad-form,.buy-form{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:4px}
+.cad-form input,.buy-form input{width:110px;padding:5px 8px}
+.cad-form button,.buy-form button{padding:5px 12px;font-size:14px}
+.cad-form .lock-msg,.buy-form .lock-msg{flex-basis:100%;margin:0;font-size:13.5px}
 table.ct tr.today td{border-bottom:0;padding-top:0;font-size:13.5px;color:var(--muted);font-weight:400}
 .pricebox{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
 .pb{border-radius:8px;padding:10px 12px;background:var(--bg);border:1px solid var(--line2)}

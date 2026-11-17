@@ -19,15 +19,13 @@ python3 tools/publish.py            # locks it again into data/costs.enc.json
 git add -A && git commit -m "Quote for <design>" && git push
 ```
 
-## Recording a purchase (booking the gold)
+## Recording a purchase (the 14K rate paid)
 
-Until a design's gold is booked, its cost uses today's gold rate from the box at the top. When you book the gold
-with the maker, tap **Book gold** next to its name (or **Change** on its 14K gold line), confirm, and type the day, the 24K rate that day (it
-fills the 14K rate at the maker's 59.5%) or the 14K rate on the bill, and the gold weight. **Save**. The cost then
-follows that booking; the selling price still follows today's rate, and the profit is the selling price minus what
-was paid. **Change** edits it later (say, when the final bill's weight comes); **Not booked yet** undoes it.
+Until a design's gold is bought, its cost uses today's gold rate from the box at the top. When you buy it, tap
+**Change** on its 14K gold line, confirm, type the 14K rate per gram you paid, and **Save**. The cost and profit then
+use that rate; the selling price still follows today's rate. **Back to today's rate** undoes it.
 
-A booking typed on the page stays on that device only. To put it in the locked data for every device, add
+A rate typed on the page stays on that device only. To put it in the locked data for every device, add
 `"bought"` to that design's `quote` the same way as a quote, then lock and push:
 
 ```
@@ -35,7 +33,7 @@ A booking typed on the page stays on that device only. To put it in the locked d
 ```
 
 `rate14` is the 14K price per gram on the bill. `g` (gold weight) and `ct` (carats, in the order of `stones`) are
-only needed when the bill's weights differ from the quote. A booking typed on a device wins over this one there.
+only needed when the bill's weights differ from the quote. A rate typed on a device wins over this one there.
 
 `tools/costs.json` and `tools/password.txt` are git-ignored: nothing in this repo holds cost prices in plain text,
 and the password is the only key. Keep it somewhere safe; without it the cost data can't be opened.
