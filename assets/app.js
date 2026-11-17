@@ -72,31 +72,77 @@ const S = { data: null, rate24: 0, markup: 1.5, set: null };
 
 const rate14 = () => S.rate24 / 0.999 * S.data.gold.maker_purity;   // 14K per gram, as the maker bills it
 const sum = lines => lines.reduce((a, l) => a + l[2], 0);
+const whole = lines => lines.map(([what, how, amt]) => [what, how, Math.round(amt)]);   // lines in rupees, so a bill adds up
+const pad = n => String(n).padStart(2, '0');
+const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+const dayTxt = iso => new Date(iso + 'T00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 
+// Two gold rates. Until a piece is bought, its gold is costed at today's rate (the box at the top). Once bought,
+// quote.bought holds the maker's final bill: date, rate14 (14K ₹ per gram as billed), and g / ct when the bill's
+// weights differ from the quote. The cost then uses that bill; the selling price still follows today's rate
+// (today = true: the same piece at today's rate).
 // Not GST-registered: the maker's GST can't be claimed back, so it is part of the cost, and the price carries no GST.
 // Registered: the maker's GST comes back as input credit, so cost is before GST and GST is added to the price.
-function costOf(q) {
-  const g = q.gold.g, r = rate14(), { gst, hallmark, registered } = S.set;
-  const bill = [
-    ['14K gold', `${g} g × ${inr(r)} per gram`, g * r],
-    ...q.stones.map(s => [s.what, `${s.count} stones · ${s.ct} ct × ${inr(s.rate)} per carat`, s.ct * s.rate]),
+function costOf(q, today = false) {
+  const b = q.bought || {}, booked = !today && !!b.rate14;
+  const g = b.g ?? q.gold.g, r = booked ? b.rate14 : rate14(), { gst, hallmark, registered } = S.set;
+  const bill = whole([
+    ['14K gold', `${g} g × ${inr(r)} per gram, ${booked ? `booked ${dayTxt(b.date)}` : "today's rate"}`, g * r],
+    ...q.stones.map((s, i) => {
+      const ct = b.ct?.[i] ?? s.ct;
+      return [s.what, `${s.count} stones · ${ct} ct × ${inr(s.rate)} per carat`, ct * s.rate];
+    }),
     ['Labour', `${g} g × ${inr(q.labour_per_g)} per gram`, g * q.labour_per_g],
     ['CAD design', 'one time', q.cad_charge],
     ['IGI certificate', '', q.igi],
-  ];
-  const lines = [
+  ]);
+  const lines = whole([
     ...bill,
     ...(registered ? [] : [["Maker's GST", `${rateTxt(gst)} of the maker's bill, ${inr(sum(bill))}`, sum(bill) * gst]]),
     ['BIS hallmark + HUID', `${q.pieces} × ${inr(hallmark)}`, q.pieces * hallmark],
-  ];
+  ]);
   return { lines, total: sum(lines) };
 }
 
-function priceOf(cost) {
+// The price is marked up from the cost at today's rate; profit is what is left after what was (or will be) paid.
+function priceOf(todayCost, paidCost = todayCost) {
   const gst = S.set.registered ? S.set.gst : 0;
-  const tag = Math.round(cost * S.markup * (1 + gst) / 100) * 100;   // price tag, rounded to ₹100
-  const profit = tag / (1 + gst) - cost;
+  const tag = Math.round(todayCost * S.markup * (1 + gst) / 100) * 100;   // price tag, rounded to ₹100
+  const profit = tag / (1 + gst) - paidCost;
   return { tag, profit, share: profit / (tag / (1 + gst)) };
+}
+
+// ---------------------------------------------------------------- today's gold rate
+// Each device remembers the last rate typed and the day it was typed, so an old rate can't pass for today's.
+// Only a per-gram rate is taken: the 10 g price (as IBJA and many sites show it) is refused, not divided.
+function rateNote(err = '') {
+  const el = $('#rate-note'), stale = S.rateDay !== todayISO();
+  el.hidden = !err && !stale;
+  el.innerHTML = err ? esc(err)
+    : `${S.rateDay ? `This rate is from ${dayTxt(S.rateDay)}.` : 'This rate is from an earlier day.'} Type today's rate. `
+      + '<button type="button" class="link" id="rate-keep">It is still today\'s rate</button>';
+}
+
+function setRate(v) {
+  S.rate24 = v;
+  S.rateDay = todayISO();
+  store.set('akurati-rate24', v);
+  store.set('akurati-rate24-day', S.rateDay);
+  rateNote();
+  render();
+}
+
+function initRate() {
+  const rate = $('#rate24'), ok = v => v >= 3000 && v <= 50000;
+  rate.value = S.rate24;
+  rate.addEventListener('input', () => { const v = Number(rate.value); if (ok(v)) setRate(v); });
+  rate.addEventListener('change', () => {
+    const v = Number(rate.value);
+    if (!ok(v)) rateNote(v > 50000 ? 'That looks like the price for 10 grams. Type the price for 1 gram.'
+      : 'That is too low for 24K gold per gram. Check the number.');
+  });
+  $('#rate-note').addEventListener('click', e => { if (e.target.id === 'rate-keep') setRate(S.rate24); });
+  rateNote();
 }
 
 // ---------------------------------------------------------------- tax settings
@@ -160,17 +206,20 @@ function initSettings() {
 
 // ---------------------------------------------------------------- render
 function start() {
-  S.rate24 = Number(store.get('akurati-rate24')) || S.data.gold.rate24;
+  const typed = Number(store.get('akurati-rate24'));
+  S.rate24 = typed || S.data.gold.rate24;
+  S.rateDay = typed ? store.get('akurati-rate24-day') : S.data.gold.date;   // null: typed before days were kept
   S.markup = Number(store.get('akurati-markup')) || S.data.markup;
   loadSettings();
   $('#app').innerHTML = `
   <section class="panel controls">
     <div class="rate">
       <label for="rate24">Today's 24K gold rate, ₹ per gram</label>
-      <input id="rate24" type="number" inputmode="decimal" min="1000" step="1">
+      <input id="rate24" type="number" inputmode="decimal" min="3000" max="50000" step="1">
       <a class="small" href="https://www.goodreturns.in/gold-rates/" target="_blank" rel="noopener">Check today's rate</a>
+      <p id="rate-note" class="rate-note" role="status" hidden></p>
     </div>
-    <div class="chip key"><b id="c-14"></b><span>14K gold per gram today</span></div>
+    <div class="chip key"><b id="c-14"></b><span>14K gold per gram today: the selling price follows this</span></div>
     <div class="markup">
       <label for="markup">Markup</label>
       <input id="markup" type="range" min="1.2" max="2.5" step="0.05">
@@ -200,12 +249,7 @@ function start() {
   <div class="foot-note"><button type="button" class="ghost" id="relock">Lock this device</button></div>
   <dialog class="zoom" id="zoom"><img alt=""></dialog>`;
 
-  const rate = $('#rate24');
-  rate.value = S.rate24;
-  rate.addEventListener('input', () => {
-    const v = Number(rate.value);
-    if (v > 1000) { S.rate24 = v; store.set('akurati-rate24', v); render(); }
-  });
+  initRate();
   const m = $('#markup');
   m.value = S.markup;
   m.addEventListener('input', () => { S.markup = Number(m.value); store.set('akurati-markup', S.markup); render(); });
@@ -238,13 +282,16 @@ function render() {
 }
 
 function card(d) {
-  const q = d.quote, c = costOf(q), p = priceOf(c.total), reg = S.set.registered;
+  const q = d.quote, b = q.bought, reg = S.set.registered;
+  const c = costOf(q), now = b ? costOf(q, true) : c, p = priceOf(now.total, c.total);
   const rows = c.lines.map(([what, how, amt]) => `
     <tr><td><div class="what">${esc(what)}</div>${how ? `<div class="how">${esc(how)}</div>` : ''}</td><td>${inr(amt)}</td></tr>`).join('');
+  const todayRow = b ? `
+    <tr class="today"><td>The same piece at today's gold rate: the selling price is marked up from this</td><td>${inr(now.total)}</td></tr>` : '';
   return `
   <article class="qcard">
     <div class="qhead">
-      <h3>${esc(d.name)}</h3>
+      <h3>${esc(d.name)} <span class="badge${b ? ' booked' : ''}">${b ? `Gold booked ${esc(dayTxt(b.date))}` : 'Gold not booked yet'}</span></h3>
       <div class="sub">${[`${d.type}, ${q.pieces === 2 ? 'a pair' : 'one piece'}`, d.collection, d.code, `maker's code ${q.maker_code}`]
         .map(s => `<span>${esc(s)}</span>`).join(' · ')}</div>
     </div>
@@ -255,7 +302,7 @@ function card(d) {
       </div>
       <div>
         <table class="ct"><tbody>${rows}
-          <tr class="sum"><td>${reg ? 'Cost price, before GST' : "Cost price, with the maker's GST"}</td><td>${inr(c.total)}</td></tr>
+          <tr class="sum"><td>${reg ? 'Cost price, before GST' : "Cost price, with the maker's GST"}</td><td>${inr(c.total)}</td></tr>${todayRow}
         </tbody></table>
         <div class="pricebox">
           <div class="pb tag"><b>${inr(p.tag)}</b><span>${reg ? `selling price, with ${rateTxt(S.set.gst)} GST` : 'selling price · no GST, not registered'}</span></div>

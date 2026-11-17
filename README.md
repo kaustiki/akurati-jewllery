@@ -19,5 +19,18 @@ python3 tools/publish.py            # locks it again into data/costs.enc.json
 git add -A && git commit -m "Quote for <design>" && git push
 ```
 
+## Recording a purchase (the maker's final bill)
+
+Until a design's gold is booked, its cost uses today's gold rate from the box at the top. When the maker's final
+bill comes, add `"bought"` to that design's `quote` the same way, then lock and push:
+
+```
+"bought": {"date": "2026-11-20", "rate14": 8150, "g": 5.8, "ct": [0.78, 1.5]}
+```
+
+`rate14` is the 14K price per gram on the bill. `g` (gold weight) and `ct` (carats, in the order of `stones`) are
+only needed when the bill's weights differ from the quote. The cost then follows the bill; the selling price still
+follows today's rate, and the profit is the selling price minus what was paid.
+
 `tools/costs.json` and `tools/password.txt` are git-ignored: nothing in this repo holds cost prices in plain text,
 and the password is the only key. Keep it somewhere safe; without it the cost data can't be opened.
