@@ -22,7 +22,7 @@ git add -A && git commit -m "Quote for <design>" && git push
 ## Recording a purchase (booking the gold)
 
 Until a design's gold is booked, its cost uses today's gold rate from the box at the top. When you book the gold
-with the maker, tap **Book gold** next to the design's name, confirm, and type the day, the 24K rate that day (it
+with the maker, tap **Book gold** next to its name (or **Change** on its 14K gold line), confirm, and type the day, the 24K rate that day (it
 fills the 14K rate at the maker's 59.5%) or the 14K rate on the bill, and the gold weight. **Save**. The cost then
 follows that booking; the selling price still follows today's rate, and the profit is the selling price minus what
 was paid. **Change** edits it later (say, when the final bill's weight comes); **Not booked yet** undoes it.

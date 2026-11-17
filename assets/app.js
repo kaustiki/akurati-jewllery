@@ -90,7 +90,7 @@ function costOf(d, today = false) {
   const q = d.quote, b = boughtOf(d) || {}, booked = !today && !!b.rate14, cad = cadOf(d);
   const g = b.g ?? q.gold.g, r = booked ? b.rate14 : rate14(), { gst, hallmark, registered } = S.set;
   const bill = whole([
-    ['14K gold', `${g} g × ${inr(r)} per gram, ${booked ? `booked ${dayTxt(b.date)}` : "today's rate"}`, g * r],
+    ['14K gold', `${g} g × ${inr(r)} per gram, ${booked ? `booked ${dayTxt(b.date)}` : "today's rate"}`, g * r, 'gold'],
     ...q.stones.map((s, i) => {
       const ct = b.ct?.[i] ?? s.ct;
       return [s.what, `${s.count} stones · ${ct} ct × ${inr(s.rate)} per carat`, ct * s.rate];
@@ -169,9 +169,11 @@ function initCad() {
 }
 
 // ---------------------------------------------------------------- gold booking per design
-// When the gold is booked with the maker, its day, rate and weight are typed on the card (Book + confirm + Save) and
+// When the gold is booked with the maker, its day, rate and weight are typed on the gold line (Change + confirm + Save) and
 // kept on this device (localStorage akurati-bought {code: {date, rate14, rate24?, g?, ct?}}). The 24K rate is only
 // there to fill the 14K rate at the maker's purity; the 14K rate on the bill is what the cost uses.
+const RATE_SITE = 'https://www.goodreturns.in/gold-rates/';
+const rateLink = `<a class="small" href="${RATE_SITE}" target="_blank" rel="noopener">Check today's rate</a>`;
 const purity = () => S.data.gold.maker_purity;
 const to14 = r24 => Math.round(r24 / 0.999 * purity());
 
@@ -190,7 +192,7 @@ function buyForm(d) {
   return `
     <form class="set-form buy-form" data-code="${esc(d.code)}" autocomplete="off">
       <label>Day the gold was booked<input class="buy-date" type="date" max="${todayISO()}" value="${esc(b.date || todayISO())}"></label>
-      <label>24K rate that day, ₹ per gram<input class="buy-24" type="text" inputmode="decimal" value="${r24}"></label>
+      <label>24K rate that day, ₹ per gram<input class="buy-24" type="text" inputmode="decimal" value="${r24}">${rateLink}</label>
       <label>14K rate on the bill, ₹ per gram<input class="buy-14" type="text" inputmode="decimal" value="${r14}"></label>
       <label>Gold weight, grams<input class="buy-g" type="text" inputmode="decimal" value="${b.g ?? q.gold.g}"></label>
       <p class="small note">Typing the 24K rate fills the 14K rate at the maker's ${rateTxt(purity())}. If the maker's bill
@@ -203,6 +205,12 @@ function buyForm(d) {
       </div>
       <p class="lock-msg buy-msg" role="alert"></p>
     </form>`;
+}
+
+function goldHow(d, how) {
+  if (S.buyEdit === d.code) return buyForm(d);
+  return `<div class="how">${esc(how)} · <button type="button" class="link buy-edit" data-code="${esc(d.code)}">Change</button>
+    · ${rateLink}</div>`;
 }
 
 function initBought() {
@@ -368,7 +376,7 @@ function start() {
     <div class="rate">
       <label for="rate24">Today's 24K gold rate, ₹ per gram</label>
       <input id="rate24" type="number" inputmode="decimal" min="3000" max="50000" step="1">
-      <a class="small" href="https://www.goodreturns.in/gold-rates/" target="_blank" rel="noopener">Check today's rate</a>
+      ${rateLink}
       <p id="rate-note" class="rate-note" role="status" hidden></p>
     </div>
     <div class="chip key"><b id="c-14"></b><span>14K gold per gram today: the selling price follows this</span></div>
@@ -439,7 +447,8 @@ function card(d) {
   const q = d.quote, b = boughtOf(d), reg = S.set.registered;
   const c = costOf(d), now = b ? costOf(d, true) : c, p = priceOf(now.total, c.total);
   const rows = c.lines.map(([what, how, amt, key]) => `
-    <tr><td><div class="what">${esc(what)}</div>${key === 'cad' ? cadHow(d, how) : how ? `<div class="how">${esc(how)}</div>` : ''}</td><td>${inr(amt)}</td></tr>`).join('');
+    <tr><td><div class="what">${esc(what)}</div>${key === 'cad' ? cadHow(d, how) : key === 'gold' ? goldHow(d, how)
+      : how ? `<div class="how">${esc(how)}</div>` : ''}</td><td>${inr(amt)}</td></tr>`).join('');
   const todayRow = b ? `
     <tr class="today"><td>The same piece at today's gold rate: the selling price is marked up from this</td><td>${inr(now.total)}</td></tr>` : '';
   return `
@@ -449,7 +458,7 @@ function card(d) {
         ${S.buyEdit === d.code ? '' : `<button type="button" class="link buy-edit" data-code="${esc(d.code)}">${b ? 'Change' : 'Book gold'}</button>`}</h3>
       <div class="sub">${[`${d.type}, ${q.pieces === 2 ? 'a pair' : 'one piece'}`, d.collection, d.code, `maker's code ${q.maker_code}`]
         .map(s => `<span>${esc(s)}</span>`).join(' · ')}</div>
-    </div>${S.buyEdit === d.code ? buyForm(d) : ''}
+    </div>
     <div class="qgrid">
       <div class="pics">
         <figure><img src="img/designs/${esc(d.slug)}.jpg" alt="${esc(d.name)}"><figcaption>Our design</figcaption></figure>

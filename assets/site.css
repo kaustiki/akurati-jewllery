@@ -75,7 +75,8 @@ button.link{background:none;border:0;padding:0;color:var(--crimson);text-decorat
 .qhead h3 .badge{font-family:Mukta,system-ui,sans-serif;vertical-align:middle;margin-left:6px}
 .badge.booked{background:#E3EEDB;color:#3D5A2A}
 .qhead h3 .buy-edit{font-family:Mukta,system-ui,sans-serif;font-size:14.5px;vertical-align:middle;margin-left:6px}
-.buy-form{margin:-4px 0 16px}
+.buy-form{margin:6px 0 4px;padding:12px;font-size:14.5px;align-items:start}
+.buy-form label .small{display:inline-block;margin-top:4px;font-weight:400}
 .qhead .sub{color:var(--muted);font-size:14.5px}
 .qhead .sub span{white-space:nowrap}   /* a code like ER-081 never splits at its hyphen */
 .qgrid{display:grid;grid-template-columns:300px 1fr;gap:22px;align-items:start}
