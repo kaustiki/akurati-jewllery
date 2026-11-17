@@ -68,25 +68,26 @@ const saved = store.get('akurati-pw');
 if (saved) unlock(saved, true);
 
 // ---------------------------------------------------------------- state and maths
-const S = { data: null, rate24: 0, markup: 1.5, set: null, cad: {}, cadEdit: null };
+const S = { data: null, rate24: 0, markup: 1.5, set: null, cad: {}, cadEdit: null, bought: {}, buyEdit: null };
 
 const rate14 = () => S.rate24 / 0.999 * S.data.gold.maker_purity;   // 14K per gram, as the maker bills it
 const sum = lines => lines.reduce((a, l) => a + l[2], 0);
 const whole = lines => lines.map(([what, how, amt, key]) => [what, how, Math.round(amt), key]);   // whole rupees, so a bill adds up
 const design = code => S.data.designs.find(d => d.code === code);
 const cadOf = d => S.cad[d.code] ?? d.quote.cad_charge;   // this device's CAD charge for a design, else the maker's
+const boughtOf = d => S.bought[d.code] ?? d.quote.bought ?? null;   // this device's booking, else the locked bill's
 const pad = n => String(n).padStart(2, '0');
 const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
 const dayTxt = iso => new Date(iso + 'T00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 
 // Two gold rates. Until a piece is bought, its gold is costed at today's rate (the box at the top). Once bought,
-// quote.bought holds the maker's final bill: date, rate14 (14K ₹ per gram as billed), and g / ct when the bill's
-// weights differ from the quote. The cost then uses that bill; the selling price still follows today's rate
-// (today = true: the same piece at today's rate).
+// the booking (typed on the page, or quote.bought in the locked data) holds date, rate14 (14K ₹ per gram as
+// billed), and g / ct when the bill's weights differ from the quote. The cost then uses that booking; the selling
+// price still follows today's rate (today = true: the same piece at today's rate).
 // Not GST-registered: the maker's GST can't be claimed back, so it is part of the cost, and the price carries no GST.
 // Registered: the maker's GST comes back as input credit, so cost is before GST and GST is added to the price.
 function costOf(d, today = false) {
-  const q = d.quote, b = q.bought || {}, booked = !today && !!b.rate14, cad = cadOf(d);
+  const q = d.quote, b = boughtOf(d) || {}, booked = !today && !!b.rate14, cad = cadOf(d);
   const g = b.g ?? q.gold.g, r = booked ? b.rate14 : rate14(), { gst, hallmark, registered } = S.set;
   const bill = whole([
     ['14K gold', `${g} g × ${inr(r)} per gram, ${booked ? `booked ${dayTxt(b.date)}` : "today's rate"}`, g * r],
@@ -163,6 +164,100 @@ function initCad() {
     if (Object.keys(S.cad).length) store.set('akurati-cad', JSON.stringify(S.cad));
     else store.del('akurati-cad');
     S.cadEdit = null;
+    render();
+  });
+}
+
+// ---------------------------------------------------------------- gold booking per design
+// When the gold is booked with the maker, its day, rate and weight are typed on the card (Book + confirm + Save) and
+// kept on this device (localStorage akurati-bought {code: {date, rate14, rate24?, g?, ct?}}). The 24K rate is only
+// there to fill the 14K rate at the maker's purity; the 14K rate on the bill is what the cost uses.
+const purity = () => S.data.gold.maker_purity;
+const to14 = r24 => Math.round(r24 / 0.999 * purity());
+
+function loadBought() {
+  try { S.bought = JSON.parse(store.get('akurati-bought') || '{}') || {}; } catch { S.bought = {}; }
+}
+
+function saveBought() {
+  if (Object.keys(S.bought).length) store.set('akurati-bought', JSON.stringify(S.bought));
+  else store.del('akurati-bought');
+}
+
+function buyForm(d) {
+  const q = d.quote, b = boughtOf(d) || {}, own = S.bought[d.code] !== undefined;
+  const r24 = b.rate14 ? b.rate24 ?? '' : S.rate24, r14 = b.rate14 ?? to14(S.rate24);
+  return `
+    <form class="set-form buy-form" data-code="${esc(d.code)}" autocomplete="off">
+      <label>Day the gold was booked<input class="buy-date" type="date" max="${todayISO()}" value="${esc(b.date || todayISO())}"></label>
+      <label>24K rate that day, ₹ per gram<input class="buy-24" type="text" inputmode="decimal" value="${r24}"></label>
+      <label>14K rate on the bill, ₹ per gram<input class="buy-14" type="text" inputmode="decimal" value="${r14}"></label>
+      <label>Gold weight, grams<input class="buy-g" type="text" inputmode="decimal" value="${b.g ?? q.gold.g}"></label>
+      <p class="small note">Typing the 24K rate fills the 14K rate at the maker's ${rateTxt(purity())}. If the maker's bill
+        shows a different 14K rate, type that. The quote says ${q.gold.g} g; change the weight when the final bill comes.
+        Only this device keeps this booking.</p>
+      <div class="set-btns">
+        <button type="submit">Save</button>
+        <button type="button" class="ghost buy-cancel">Cancel</button>
+        ${own ? `<button type="button" class="ghost buy-clear">${q.bought ? 'Back to the locked bill' : 'Not booked yet'}</button>` : ''}
+      </div>
+      <p class="lock-msg buy-msg" role="alert"></p>
+    </form>`;
+}
+
+function initBought() {
+  $('#app').addEventListener('click', e => {
+    const t = e.target;
+    if (t.matches('.buy-edit')) {
+      const d = design(t.dataset.code);
+      const ask = boughtOf(d) ? `Change the gold booking for ${d.name}?` : `Record the gold booking for ${d.name}?`;
+      if (!confirm(`${ask}\nIts cost price and profit change with it. Only this device keeps it.`)) return;
+      S.buyEdit = d.code;
+      render();
+      $('.buy-form .buy-24').focus();
+    } else if (t.matches('.buy-cancel')) {
+      S.buyEdit = null;
+      render();
+    } else if (t.matches('.buy-clear')) {
+      const d = design(t.closest('.buy-form').dataset.code);
+      if (!confirm(d.quote.bought ? `Take ${d.name} back to the bill in the locked data?`
+        : `Mark the gold for ${d.name} as not booked?\nIts cost goes back to today's rate.`)) return;
+      delete S.bought[d.code];
+      saveBought();
+      S.buyEdit = null;
+      render();
+    }
+  });
+  $('#app').addEventListener('input', e => {   // 24K fills 14K; typing 14K leaves 24K alone
+    if (!e.target.matches('.buy-24')) return;
+    const v = Number(e.target.value.replace(/[₹,\s]/g, ''));
+    if (v >= 3000 && v <= 50000) e.target.closest('.buy-form').querySelector('.buy-14').value = to14(v);
+  });
+  $('#app').addEventListener('submit', e => {
+    if (!e.target.matches('.buy-form')) return;
+    e.preventDefault();
+    const f = e.target, d = design(f.dataset.code), q = d.quote, msg = f.querySelector('.buy-msg');
+    const num = sel => { const s = f.querySelector(sel).value.replace(/[₹,\s]/g, ''); return s === '' ? NaN : Number(s); };
+    const date = f.querySelector('.buy-date').value, r24 = num('.buy-24'), r14 = num('.buy-14'), g = num('.buy-g');
+    if (!date) { msg.textContent = 'Pick the day the gold was booked.'; return; }
+    if (date > todayISO()) { msg.textContent = 'That day has not come yet. Pick the day the gold was booked.'; return; }
+    if (!Number.isNaN(r24) && !(r24 >= 3000 && r24 <= 50000)) {
+      msg.textContent = r24 > 50000 ? 'That 24K rate looks like the price for 10 grams. Type the price for 1 gram.'
+        : 'That is too low for 24K gold per gram. Check the number, or leave it empty.';
+      return;
+    }
+    if (!(r14 >= 1500 && r14 <= 35000)) {
+      msg.textContent = r14 > 35000 ? 'That 14K rate looks like the price for 10 grams. Type the price for 1 gram.'
+        : 'Type the 14K rate per gram from the bill.';
+      return;
+    }
+    if (!(g > 0 && g <= 100)) { msg.textContent = 'Type the gold weight in grams.'; return; }
+    const rec = { ...(q.bought || {}), date, rate14: r14 };   // carats from a locked bill stay
+    if (Number.isNaN(r24)) delete rec.rate24; else rec.rate24 = r24;
+    if (g === q.gold.g) delete rec.g; else rec.g = g;
+    S.bought[d.code] = rec;
+    saveBought();
+    S.buyEdit = null;
     render();
   });
 }
@@ -267,6 +362,7 @@ function start() {
   S.markup = Number(store.get('akurati-markup')) || S.data.markup;
   loadSettings();
   loadCad();
+  loadBought();
   $('#app').innerHTML = `
   <section class="panel controls">
     <div class="rate">
@@ -319,6 +415,7 @@ function start() {
   $('#zoom').addEventListener('click', e => e.currentTarget.close());
   initSettings();
   initCad();
+  initBought();
   render();
 }
 
@@ -339,7 +436,7 @@ function render() {
 }
 
 function card(d) {
-  const q = d.quote, b = q.bought, reg = S.set.registered;
+  const q = d.quote, b = boughtOf(d), reg = S.set.registered;
   const c = costOf(d), now = b ? costOf(d, true) : c, p = priceOf(now.total, c.total);
   const rows = c.lines.map(([what, how, amt, key]) => `
     <tr><td><div class="what">${esc(what)}</div>${key === 'cad' ? cadHow(d, how) : how ? `<div class="how">${esc(how)}</div>` : ''}</td><td>${inr(amt)}</td></tr>`).join('');
@@ -348,10 +445,11 @@ function card(d) {
   return `
   <article class="qcard">
     <div class="qhead">
-      <h3>${esc(d.name)} <span class="badge${b ? ' booked' : ''}">${b ? `Gold booked ${esc(dayTxt(b.date))}` : 'Gold not booked yet'}</span></h3>
+      <h3>${esc(d.name)} <span class="badge${b ? ' booked' : ''}">${b ? `Gold booked ${esc(dayTxt(b.date))}` : 'Gold not booked yet'}</span>
+        ${S.buyEdit === d.code ? '' : `<button type="button" class="link buy-edit" data-code="${esc(d.code)}">${b ? 'Change' : 'Book gold'}</button>`}</h3>
       <div class="sub">${[`${d.type}, ${q.pieces === 2 ? 'a pair' : 'one piece'}`, d.collection, d.code, `maker's code ${q.maker_code}`]
         .map(s => `<span>${esc(s)}</span>`).join(' · ')}</div>
-    </div>
+    </div>${S.buyEdit === d.code ? buyForm(d) : ''}
     <div class="qgrid">
       <div class="pics">
         <figure><img src="img/designs/${esc(d.slug)}.jpg" alt="${esc(d.name)}"><figcaption>Our design</figcaption></figure>
