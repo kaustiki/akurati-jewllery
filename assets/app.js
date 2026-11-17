@@ -68,11 +68,13 @@ const saved = store.get('akurati-pw');
 if (saved) unlock(saved, true);
 
 // ---------------------------------------------------------------- state and maths
-const S = { data: null, rate24: 0, markup: 1.5, set: null };
+const S = { data: null, rate24: 0, markup: 1.5, set: null, cad: {}, cadEdit: null };
 
 const rate14 = () => S.rate24 / 0.999 * S.data.gold.maker_purity;   // 14K per gram, as the maker bills it
 const sum = lines => lines.reduce((a, l) => a + l[2], 0);
-const whole = lines => lines.map(([what, how, amt]) => [what, how, Math.round(amt)]);   // lines in rupees, so a bill adds up
+const whole = lines => lines.map(([what, how, amt, key]) => [what, how, Math.round(amt), key]);   // whole rupees, so a bill adds up
+const design = code => S.data.designs.find(d => d.code === code);
+const cadOf = d => S.cad[d.code] ?? d.quote.cad_charge;   // this device's CAD charge for a design, else the maker's
 const pad = n => String(n).padStart(2, '0');
 const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
 const dayTxt = iso => new Date(iso + 'T00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
@@ -83,8 +85,8 @@ const dayTxt = iso => new Date(iso + 'T00:00').toLocaleDateString('en-IN', { day
 // (today = true: the same piece at today's rate).
 // Not GST-registered: the maker's GST can't be claimed back, so it is part of the cost, and the price carries no GST.
 // Registered: the maker's GST comes back as input credit, so cost is before GST and GST is added to the price.
-function costOf(q, today = false) {
-  const b = q.bought || {}, booked = !today && !!b.rate14;
+function costOf(d, today = false) {
+  const q = d.quote, b = q.bought || {}, booked = !today && !!b.rate14, cad = cadOf(d);
   const g = b.g ?? q.gold.g, r = booked ? b.rate14 : rate14(), { gst, hallmark, registered } = S.set;
   const bill = whole([
     ['14K gold', `${g} g × ${inr(r)} per gram, ${booked ? `booked ${dayTxt(b.date)}` : "today's rate"}`, g * r],
@@ -93,7 +95,7 @@ function costOf(q, today = false) {
       return [s.what, `${s.count} stones · ${ct} ct × ${inr(s.rate)} per carat`, ct * s.rate];
     }),
     ['Labour', `${g} g × ${inr(q.labour_per_g)} per gram`, g * q.labour_per_g],
-    ['CAD design', 'one time', q.cad_charge],
+    ['CAD design', cad === q.cad_charge ? 'one time' : `one time · maker's quote ${inr(q.cad_charge)}`, cad, 'cad'],
     ['IGI certificate', '', q.igi],
   ]);
   const lines = whole([
@@ -110,6 +112,59 @@ function priceOf(todayCost, paidCost = todayCost) {
   const tag = Math.round(todayCost * S.markup * (1 + gst) / 100) * 100;   // price tag, rounded to ₹100
   const profit = tag / (1 + gst) - paidCost;
   return { tag, profit, share: profit / (tag / (1 + gst)) };
+}
+
+// ---------------------------------------------------------------- CAD charge per design
+// The maker's one-time fee for a design's CAD. It can be changed on a device (to 0 for a repeat order, once the CAD
+// is paid), behind Change + a confirm like the tax settings; the maker's amount stays one tap away.
+function loadCad() {
+  try { S.cad = JSON.parse(store.get('akurati-cad') || '{}') || {}; } catch { S.cad = {}; }
+}
+
+function cadHow(d, how) {
+  if (S.cadEdit === d.code) return `
+    <form class="cad-form" data-code="${esc(d.code)}" autocomplete="off">
+      <input type="text" inputmode="numeric" value="${cadOf(d)}" aria-label="CAD charge for ${esc(d.name)}, ₹">
+      <button type="submit">Save</button>
+      <button type="button" class="ghost cad-cancel">Cancel</button>
+      <button type="button" class="ghost cad-reset">Maker's ${inr(d.quote.cad_charge)}</button>
+      <p class="lock-msg cad-msg" role="alert"></p>
+    </form>`;
+  const own = S.cad[d.code] !== undefined;
+  return `<div class="how">${esc(how)}${own ? ' <span class="badge changed">changed on this device</span>' : ''}
+    · <button type="button" class="link cad-edit" data-code="${esc(d.code)}">Change</button></div>`;
+}
+
+function initCad() {
+  $('#app').addEventListener('click', e => {
+    const t = e.target;
+    if (t.matches('.cad-edit')) {
+      const d = design(t.dataset.code);
+      if (!confirm(`Change the CAD charge for ${d.name}?\nOnly this device changes. Set it to 0 for a repeat order, once the CAD is paid.`)) return;
+      S.cadEdit = d.code;
+      render();
+      $('.cad-form input').focus();
+    } else if (t.matches('.cad-cancel')) {
+      S.cadEdit = null;
+      render();
+    } else if (t.matches('.cad-reset')) {
+      const f = t.closest('.cad-form');
+      f.querySelector('input').value = design(f.dataset.code).quote.cad_charge;   // still needs Save
+    }
+  });
+  $('#app').addEventListener('submit', e => {
+    if (!e.target.matches('.cad-form')) return;
+    e.preventDefault();
+    const f = e.target, d = design(f.dataset.code), raw = f.querySelector('input').value.replace(/[₹,\s]/g, '');
+    const v = raw === '' ? NaN : Number(raw);
+    if (!(v >= 0 && v <= 50000)) { f.querySelector('.cad-msg').textContent = 'Type the CAD charge in rupees, 0 to 50,000.'; return; }
+    if (v === d.quote.cad_charge) delete S.cad[d.code];
+    else S.cad[d.code] = v;
+    if (Object.keys(S.cad).length) store.set('akurati-cad', JSON.stringify(S.cad));
+    else store.del('akurati-cad');
+    S.cadEdit = null;
+    render();
+  });
 }
 
 // ---------------------------------------------------------------- today's gold rate
@@ -211,6 +266,7 @@ function start() {
   S.rateDay = typed ? store.get('akurati-rate24-day') : S.data.gold.date;   // null: typed before days were kept
   S.markup = Number(store.get('akurati-markup')) || S.data.markup;
   loadSettings();
+  loadCad();
   $('#app').innerHTML = `
   <section class="panel controls">
     <div class="rate">
@@ -262,6 +318,7 @@ function start() {
   });
   $('#zoom').addEventListener('click', e => e.currentTarget.close());
   initSettings();
+  initCad();
   render();
 }
 
@@ -283,9 +340,9 @@ function render() {
 
 function card(d) {
   const q = d.quote, b = q.bought, reg = S.set.registered;
-  const c = costOf(q), now = b ? costOf(q, true) : c, p = priceOf(now.total, c.total);
-  const rows = c.lines.map(([what, how, amt]) => `
-    <tr><td><div class="what">${esc(what)}</div>${how ? `<div class="how">${esc(how)}</div>` : ''}</td><td>${inr(amt)}</td></tr>`).join('');
+  const c = costOf(d), now = b ? costOf(d, true) : c, p = priceOf(now.total, c.total);
+  const rows = c.lines.map(([what, how, amt, key]) => `
+    <tr><td><div class="what">${esc(what)}</div>${key === 'cad' ? cadHow(d, how) : how ? `<div class="how">${esc(how)}</div>` : ''}</td><td>${inr(amt)}</td></tr>`).join('');
   const todayRow = b ? `
     <tr class="today"><td>The same piece at today's gold rate: the selling price is marked up from this</td><td>${inr(now.total)}</td></tr>` : '';
   return `
