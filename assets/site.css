@@ -52,6 +52,20 @@ button.ghost{background:transparent;color:var(--crimson)}
 .markup label{margin:0}
 .markup output{font-weight:700;white-space:nowrap}
 
+/* tax settings: read-only text; editing takes Change + confirm, then Save */
+.settings{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:8px 14px;flex-wrap:wrap;border-top:1px solid var(--line2);padding-top:12px}
+.settings p{margin:0;font-size:14.5px;color:var(--muted)}
+.settings p b{color:var(--ink);white-space:nowrap}
+.settings button{padding:5px 14px;font-size:14px}
+.badge.changed{background:#FBF3DF;color:#7A5A12;margin-left:4px}
+.set-form{grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px 18px;align-items:end;background:var(--bg);border:1px solid var(--line2);border-radius:8px;padding:14px}
+.set-form label{font-weight:600}
+.set-form label input{display:block;margin-top:4px}
+.set-form .check{display:flex;gap:8px;align-items:center;padding-bottom:9px}
+.set-form .check input{display:inline;margin:0}
+.set-form .note,.set-btns,.set-form .lock-msg{grid-column:1/-1;margin:0}
+.set-btns{display:flex;gap:8px;flex-wrap:wrap}
+
 /* priced design */
 .qcard{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px;margin-bottom:22px}
 .qhead{display:flex;justify-content:space-between;gap:4px 12px;flex-wrap:wrap;align-items:baseline;border-bottom:1px solid var(--line2);padding-bottom:10px;margin-bottom:14px}

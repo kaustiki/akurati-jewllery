@@ -8,6 +8,7 @@ const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const inr = n => '₹' + Math.round(n).toLocaleString('en-IN');
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const pct = x => Math.round(x * 100) + '%';
+const rateTxt = x => +(x * 100).toFixed(2) + '%';   // a tax rate keeps its decimals: 1.5%, not 2%
 const store = {   // per-device conveniences only; the page works without them
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
   set(k, v) { try { localStorage.setItem(k, v); } catch { /* private mode */ } },
@@ -67,34 +68,101 @@ const saved = store.get('akurati-pw');
 if (saved) unlock(saved, true);
 
 // ---------------------------------------------------------------- state and maths
-const S = { data: null, rate24: 0, markup: 1.5 };
+const S = { data: null, rate24: 0, markup: 1.5, set: null };
 
 const rate14 = () => S.rate24 / 0.999 * S.data.gold.maker_purity;   // 14K per gram, as the maker bills it
+const sum = lines => lines.reduce((a, l) => a + l[2], 0);
 
+// Not GST-registered: the maker's GST can't be claimed back, so it is part of the cost, and the price carries no GST.
+// Registered: the maker's GST comes back as input credit, so cost is before GST and GST is added to the price.
 function costOf(q) {
-  const g = q.gold.g, r = rate14();
-  const lines = [
+  const g = q.gold.g, r = rate14(), { gst, hallmark, registered } = S.set;
+  const bill = [
     ['14K gold', `${g} g × ${inr(r)} per gram`, g * r],
     ...q.stones.map(s => [s.what, `${s.count} stones · ${s.ct} ct × ${inr(s.rate)} per carat`, s.ct * s.rate]),
     ['Labour', `${g} g × ${inr(q.labour_per_g)} per gram`, g * q.labour_per_g],
     ['CAD design', 'one time', q.cad_charge],
     ['IGI certificate', '', q.igi],
-    ['BIS hallmark + HUID', `${q.pieces} × ${inr(S.data.hallmark)}`, q.pieces * S.data.hallmark],
   ];
-  return { lines, total: lines.reduce((a, l) => a + l[2], 0) };
+  const lines = [
+    ...bill,
+    ...(registered ? [] : [["Maker's GST", `${rateTxt(gst)} of the maker's bill, ${inr(sum(bill))}`, sum(bill) * gst]]),
+    ['BIS hallmark + HUID', `${q.pieces} × ${inr(hallmark)}`, q.pieces * hallmark],
+  ];
+  return { lines, total: sum(lines) };
 }
 
 function priceOf(cost) {
-  const gst = S.data.gst;
+  const gst = S.set.registered ? S.set.gst : 0;
   const tag = Math.round(cost * S.markup * (1 + gst) / 100) * 100;   // price tag, rounded to ₹100
   const profit = tag / (1 + gst) - cost;
   return { tag, profit, share: profit / (tag / (1 + gst)) };
+}
+
+// ---------------------------------------------------------------- tax settings
+// GST rate, hallmark fee and GST registration. Defaults come from the locked data; a change made on the page stays
+// on this device only. Editing takes "Change", a confirm, then "Save", so a stray tap can't move every price.
+const SETTINGS = { gst: 'akurati-gst', hallmark: 'akurati-hallmark', registered: 'akurati-registered' };
+const defaults = () => ({ gst: S.data.gst, hallmark: S.data.hallmark, registered: !!S.data.gst_registered });
+const changed = () => Object.keys(SETTINGS).some(k => store.get(SETTINGS[k]) !== null);
+
+function loadSettings() {
+  const d = defaults(), get = k => store.get(SETTINGS[k]);
+  S.set = {
+    gst: get('gst') === null ? d.gst : Number(get('gst')),
+    hallmark: get('hallmark') === null ? d.hallmark : Number(get('hallmark')),
+    registered: get('registered') === null ? d.registered : get('registered') === '1',
+  };
+}
+
+function saveSettings(set) {
+  const d = defaults();
+  S.set = set;
+  for (const k of Object.keys(SETTINGS)) {
+    if (set[k] === d[k]) store.del(SETTINGS[k]);
+    else store.set(SETTINGS[k], k === 'registered' ? (set[k] ? '1' : '0') : set[k]);
+  }
+}
+
+function fillSettings(set) {
+  $('#set-gst').value = +(set.gst * 100).toFixed(2);
+  $('#set-hm').value = set.hallmark;
+  $('#set-reg').checked = set.registered;
+  $('#set-msg').textContent = '';
+}
+
+function closeSettings() {
+  $('#set-form').hidden = true;
+  $('#set-edit').hidden = false;
+}
+
+function initSettings() {
+  $('#set-edit').addEventListener('click', () => {
+    if (!confirm('Change the GST rate, hallmark fee or GST registration?\nEvery price on this device changes with them.')) return;
+    fillSettings(S.set);
+    $('#set-form').hidden = false;
+    $('#set-edit').hidden = true;
+    $('#set-gst').focus();
+  });
+  $('#set-cancel').addEventListener('click', closeSettings);
+  $('#set-reset').addEventListener('click', () => fillSettings(defaults()));   // still needs Save
+  $('#set-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const num = s => (s.trim() === '' ? NaN : Number(s.replace(/[%₹,\s]/g, '')));
+    const gst = num($('#set-gst').value), hallmark = num($('#set-hm').value);
+    if (!(gst >= 0 && gst <= 28)) { $('#set-msg').textContent = 'GST rate should be a number from 0 to 28.'; return; }
+    if (!(hallmark >= 0 && hallmark <= 2000)) { $('#set-msg').textContent = 'Hallmark fee should be a number of rupees, 0 to 2,000.'; return; }
+    saveSettings({ gst: gst / 100, hallmark, registered: $('#set-reg').checked });
+    closeSettings();
+    render();
+  });
 }
 
 // ---------------------------------------------------------------- render
 function start() {
   S.rate24 = Number(store.get('akurati-rate24')) || S.data.gold.rate24;
   S.markup = Number(store.get('akurati-markup')) || S.data.markup;
+  loadSettings();
   $('#app').innerHTML = `
   <section class="panel controls">
     <div class="rate">
@@ -108,6 +176,23 @@ function start() {
       <input id="markup" type="range" min="1.2" max="2.5" step="0.05">
       <output id="markup-out"></output>
     </div>
+    <div class="settings">
+      <p id="set-view"></p>
+      <button type="button" class="ghost" id="set-edit">Change</button>
+    </div>
+    <form id="set-form" class="set-form" autocomplete="off" hidden>
+      <label>GST rate, %<input id="set-gst" type="text" inputmode="decimal"></label>
+      <label>BIS hallmark + HUID, ₹ per piece<input id="set-hm" type="text" inputmode="decimal"></label>
+      <label class="check"><input id="set-reg" type="checkbox"> Akurati is GST-registered</label>
+      <p class="small note">Not registered: the maker's GST is part of the cost, and the selling price has no GST.
+        Registered: the maker's GST comes back to you, and GST is added to the selling price.</p>
+      <div class="set-btns">
+        <button type="submit">Save</button>
+        <button type="button" class="ghost" id="set-cancel">Cancel</button>
+        <button type="button" class="ghost" id="set-reset">Back to defaults</button>
+      </div>
+      <p id="set-msg" class="lock-msg" role="alert"></p>
+    </form>
   </section>
   <div id="quoted"></div>
   <div class="section-h"><h2>Not priced yet</h2><p id="n-waiting"></p></div>
@@ -132,12 +217,17 @@ function start() {
     $('#zoom').showModal();
   });
   $('#zoom').addEventListener('click', e => e.currentTarget.close());
+  initSettings();
   render();
 }
 
 function render() {
+  const { gst, hallmark, registered } = S.set;
   $('#c-14').textContent = inr(rate14());
   $('#markup-out').textContent = `×${S.markup.toFixed(2)} · ${Math.round((S.markup - 1) * 100)}% on cost`;
+  $('#set-view').innerHTML = `GST <b>${rateTxt(gst)}</b> · Hallmark <b>${inr(hallmark)}</b> per piece · `
+    + `<b>${registered ? 'GST-registered' : 'Not GST-registered'}</b>`
+    + (changed() ? ' <span class="badge changed">changed on this device</span>' : '');
   const ds = S.data.designs;
   $('#quoted').innerHTML = ds.filter(d => d.quote).map(card).join('');
   const waiting = ds.filter(d => !d.quote);
@@ -148,7 +238,7 @@ function render() {
 }
 
 function card(d) {
-  const q = d.quote, c = costOf(q), p = priceOf(c.total);
+  const q = d.quote, c = costOf(q), p = priceOf(c.total), reg = S.set.registered;
   const rows = c.lines.map(([what, how, amt]) => `
     <tr><td><div class="what">${esc(what)}</div>${how ? `<div class="how">${esc(how)}</div>` : ''}</td><td>${inr(amt)}</td></tr>`).join('');
   return `
@@ -164,11 +254,11 @@ function card(d) {
       </div>
       <div>
         <table class="ct"><tbody>${rows}
-          <tr class="sum"><td>Cost price, before GST</td><td>${inr(c.total)}</td></tr>
+          <tr class="sum"><td>${reg ? 'Cost price, before GST' : "Cost price, with the maker's GST"}</td><td>${inr(c.total)}</td></tr>
         </tbody></table>
         <div class="pricebox">
-          <div class="pb tag"><b>${inr(p.tag)}</b><span>selling price, with 3% GST</span></div>
-          <div class="pb"><b>${inr(p.profit)}</b><span>profit · ${pct(p.share)} of the price before GST</span></div>
+          <div class="pb tag"><b>${inr(p.tag)}</b><span>${reg ? `selling price, with ${rateTxt(S.set.gst)} GST` : 'selling price · no GST, not registered'}</span></div>
+          <div class="pb"><b>${inr(p.profit)}</b><span>profit · ${pct(p.share)} of the ${reg ? 'price before GST' : 'selling price'}</span></div>
         </div>
       </div>
     </div>
