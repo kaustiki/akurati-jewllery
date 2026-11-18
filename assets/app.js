@@ -1,6 +1,7 @@
 // Akurati costing site.
 // Tab 1 shows nothing until the password decrypts data/costs.enc.json (made by tools/publish.py:
-// PBKDF2-SHA256 -> AES-256-GCM). Tab 2 is static HTML in index.html.
+// PBKDF2-SHA256 -> AES-256-GCM). Tab 2 is static HTML in index.html. Tab 3 (Inputs: the maker's quotes and
+// rate sheets) comes from the same locked file, so the one password opens both.
 'use strict';
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -16,13 +17,32 @@ const store = {   // per-device conveniences only; the page works without them
 };
 
 // ---------------------------------------------------------------- tabs
+const LOCK_TEXT = {   // the password form moves into whichever private tab is open
+  costs: ['Cost prices are private', 'Enter the password to see what each design costs to make and what to sell it for.'],
+  inputs: ["The maker's inputs are private", "Enter the password to see the maker's quotes and rate sheets."],
+};
+
 function showTab() {
-  const tab = location.hash === '#guide' ? 'guide' : 'costs';
+  const tab = ['guide', 'inputs'].find(t => location.hash === '#' + t) || 'costs';
   $$('[data-tab]').forEach(a => a.setAttribute('aria-selected', a.dataset.tab === tab));
   $$('.tab-panel').forEach(p => { p.hidden = p.id !== tab; });
+  if (LOCK_TEXT[tab]) {
+    const lock = $('#lock');
+    $('#' + tab).prepend(lock);
+    [$('h1', lock).textContent, $('p', lock).textContent] = LOCK_TEXT[tab];
+  }
 }
 addEventListener('hashchange', () => { showTab(); scrollTo(0, 0); });
 showTab();
+
+// ---------------------------------------------------------------- picture zoom (CAD drawings, the maker's sheets)
+document.addEventListener('click', e => {
+  const img = e.target.closest('.cad-img, .input-img');
+  if (!img) return;
+  $('#zoom img').src = img.src;
+  $('#zoom').showModal();
+});
+$('#zoom').addEventListener('click', e => e.currentTarget.close());
 
 // ---------------------------------------------------------------- unlock
 const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
@@ -57,7 +77,9 @@ async function unlock(password, remember) {
   msg.textContent = '';
   $('#lock').hidden = true;
   $('#app').hidden = false;
+  $('#inputs-app').hidden = false;
   start();
+  renderInputs();
 }
 
 $('#lock').addEventListener('submit', e => {
@@ -371,21 +393,13 @@ function start() {
   <div id="quoted"></div>
   <div class="section-h"><h2>Not priced yet</h2><p id="n-waiting"></p></div>
   <div id="waiting" class="grid"></div>
-  <div class="foot-note"><button type="button" class="ghost" id="relock">Lock this device</button></div>
-  <dialog class="zoom" id="zoom"><img alt=""></dialog>`;
+  <div class="foot-note"><button type="button" class="ghost" id="relock">Lock this device</button></div>`;
 
   initRate();
   const m = $('#markup');
   m.value = S.markup;
   m.addEventListener('input', () => { S.markup = Number(m.value); store.set('akurati-markup', S.markup); render(); });
   $('#relock').addEventListener('click', () => { store.del('akurati-pw'); location.reload(); });
-  $('#app').addEventListener('click', e => {
-    const img = e.target.closest('.cad-img');
-    if (!img) return;
-    $('#zoom img').src = img.src;
-    $('#zoom').showModal();
-  });
-  $('#zoom').addEventListener('click', e => e.currentTarget.close());
   initSettings();
   initCad();
   initBought();
@@ -438,5 +452,26 @@ function card(d) {
         </div>
       </div>
     </div>
+  </article>`;
+}
+
+// ---------------------------------------------------------------- tab 3: the maker's inputs
+// Quotes and rate sheets as the maker sent them, newest first: a picture (inlined into the locked data by
+// tools/publish.py), or a table typed in when only the numbers were kept.
+function renderInputs() {
+  const items = [...(S.data.inputs || [])].sort((a, b) => b.date.localeCompare(a.date));
+  $('#inputs-app').innerHTML = items.length ? items.map(inputCard).join('') : '<p class="small">No inputs yet.</p>';
+}
+
+function inputCard(x) {
+  const day = new Date(x.date + 'T00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  const body = x.image ? `<img class="input-img" src="${x.image}" alt="${esc(x.title)}">` : `
+    <table class="ct rates"><thead><tr>${x.table.head.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>
+      ${x.table.rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${inr(v)}</td></tr>`).join('')}</tbody></table>`;
+  return `
+  <article class="qcard input">
+    <div class="qhead"><h3>${esc(x.title)}</h3><div class="sub">${esc(x.from)} · ${esc(day)}</div></div>
+    ${body}
+    ${x.note ? `<p class="small">${esc(x.note)}</p>` : ''}
   </article>`;
 }

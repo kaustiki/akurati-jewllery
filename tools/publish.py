@@ -76,11 +76,19 @@ def thumbs(designs):
 
 
 def inline_images(data):
-    """CAD drawings go inside the locked data, so they stay private too."""
+    """CAD drawings and the maker's sheets (Inputs tab) go inside the locked data, so they stay private too."""
+    def inline(path):
+        if path.startswith('data:'):
+            return path
+        kind = 'jpeg' if path.lower().endswith(('.jpg', '.jpeg')) else 'png'
+        return f'data:image/{kind};base64,' + base64.b64encode((HERE / path).read_bytes()).decode()
     for d in data['designs']:
         q = d.get('quote')
-        if q and q.get('cad_image') and not q['cad_image'].startswith('data:'):
-            q['cad_image'] = 'data:image/png;base64,' + base64.b64encode((HERE / q['cad_image']).read_bytes()).decode()
+        if q and q.get('cad_image'):
+            q['cad_image'] = inline(q['cad_image'])
+    for x in data.get('inputs', []):
+        if x.get('image'):
+            x['image'] = inline(x['image'])
 
 
 def main():

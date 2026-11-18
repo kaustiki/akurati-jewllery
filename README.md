@@ -6,6 +6,7 @@ A small static website for Akurati Fine Jewellery, served by GitHub Pages.
   rate. The numbers are encrypted (`data/costs.enc.json`, AES-256-GCM, key from a password with PBKDF2) and only
   open in the browser with the password.
 - **Gold and diamond guide**: Picture guide 1, "Gold and diamond words", page for page as in the PDF.
+- **Inputs**: the maker's quotes and rate sheets as they were sent, locked with the same password.
 
 No build step: `index.html`, `assets/`, `img/` and `data/` are the site. To look at it locally:
 `python3 -m http.server` in this folder, then open http://localhost:8000 (opening the file directly can't load the data).
@@ -18,6 +19,16 @@ python3 tools/publish.py --open     # asks for the password, unlocks the data in
 python3 tools/publish.py            # locks it again into data/costs.enc.json
 git add -A && git commit -m "Quote for <design>" && git push
 ```
+
+## Adding an input (a quote or rate sheet from the maker)
+
+Put the picture in `tools/inputs/` (git-ignored), unlock, add it to `"inputs"` in `tools/costs.json`, lock and push:
+
+```
+{"title": "Quote for Veena (ER-081)", "from": "Maker, on WhatsApp", "date": "2026-11-17", "image": "inputs/<file>.jpg"}
+```
+
+`tools/publish.py` puts the picture inside the locked data. Without a picture, give `"table": {"head": [...], "rows": [...]}`.
 
 ## Recording a purchase (the 14K rate paid)
 

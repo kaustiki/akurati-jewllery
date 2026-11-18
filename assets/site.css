@@ -81,7 +81,7 @@ button.link{background:none;border:0;padding:0;color:var(--crimson);text-decorat
 .pics figure{margin:0}
 .pics img{width:100%;display:block;border-radius:8px;border:1px solid var(--line2);background:#fff}
 .pics figcaption{font-size:13px;color:var(--muted);margin-top:3px}
-.cad-img{cursor:zoom-in}
+.cad-img,.input-img{cursor:zoom-in}
 table.ct{width:100%;border-collapse:collapse;font-size:15px}
 table.ct td{padding:8px 6px;border-bottom:1px solid var(--line2);vertical-align:top}
 table.ct td:last-child{text-align:right;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -113,6 +113,14 @@ table.ct tr.today td{border-bottom:0;padding-top:0;font-size:13.5px;color:var(--
 .badge{display:inline-block;font-size:12.5px;font-weight:700;letter-spacing:.04em;padding:2px 9px;border-radius:99px;background:var(--sand);color:var(--muted)}
 
 .foot-note{margin-top:34px;border-top:1px solid var(--line);padding-top:12px;display:flex;justify-content:flex-end}
+
+/* the maker's inputs */
+.input .qhead h3{font-size:24px}
+.input-img{display:block;max-width:100%;border-radius:8px;border:1px solid var(--line2);background:#fff}
+table.rates{max-width:340px}
+table.rates th{text-align:left;font-size:13.5px;color:var(--muted);font-weight:600;padding:0 6px 6px;border-bottom:1px solid var(--line)}
+table.rates th:last-child{text-align:right}
+.input p.small{margin:10px 0 0}
 
 /* CAD zoom */
 dialog.zoom{border:0;padding:0;background:transparent;max-width:96vw}

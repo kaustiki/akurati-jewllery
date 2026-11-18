@@ -4,3 +4,4 @@ tools/costs.json
 tools/password.txt
 tools/cad/
 __pycache__/
+tools/inputs/
